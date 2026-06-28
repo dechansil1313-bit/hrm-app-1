@@ -1,0 +1,132 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// output   = "../lib/generated/prisma"
+
+enum EmployeeStatus {
+  ACTIVE
+  INACTIVE
+  TERMINATED
+  ON_LEAVE
+}
+
+model User {
+  id            String     @id @default(cuid())
+  name          String?
+  email         String?    @unique
+  emailVerified DateTime?  @map("email_verified")
+  image         String?
+  password      String?
+  role          String     @default("USER")
+  accounts      Account[]
+  sessions      Session[]
+  employees     Employee[]
+
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String  @map("user_id")
+  type              String
+  provider          String
+  providerAccountId String  @map("provider_account_id")
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id")
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+model Employee {
+  id         String         @id @default(cuid())
+  employeeId String         @unique @map("employee_id") // e.g., "HRM-2026-001"
+  name       String
+  role       String
+  email      String         @unique
+  phone      String?
+  photo      String? @db.Text // Base64 encoded photo or URL
+  // Job Details
+  department String // e.g., "Engineering", "HR", "Sales"
+  position   String // e.g., "Senior Developer"
+  status     EmployeeStatus @default(ACTIVE)
+
+  // HR Timeline Trackers
+  joinDate DateTime  @default(now()) @map("join_date")
+  exitDate DateTime? @map("exit_date")
+
+  // Next-Auth Link (Allows employees to log in)
+  userId String? @unique @map("user_id")
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  // System Trackers
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // 🟢 ADD THESE RELATION ARRAYS:
+  attendanceLogs Attendance[]
+  leaveRequests  Leave[]
+
+  @@map("employees")
+}
+
+model Attendance {
+  id         String   @id @default(cuid())
+  employeeId String   @map("employee_id")
+  date       DateTime @default(now())
+  status     String   // e.g., "PRESENT", "LATE", "ABSENT"
+
+  // 🟢 ADD THIS RELATION LINK:
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@map("attendance_records")
+}
+
+model Leave {
+  id         String   @id @default(cuid())
+  employeeId String   @map("employee_id")
+  startDate  DateTime @map("start_date")
+  endDate    DateTime @map("end_date")
+  status     String   @default("PENDING") // PENDING, APPROVED, REJECTED
+
+  // 🟢 ADD THIS RELATION LINK:
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@map("leave_records")
+}
