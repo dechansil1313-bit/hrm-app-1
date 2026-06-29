@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { createEmployeeSchema } from "@/lib/schemas/employee";
@@ -27,7 +28,7 @@ export async function POST(request: NextRequest) {
     // employee pointing at a non-existent user (or vice versa). If a user
     // already exists for this email, we link to them without touching their
     // password (a self-registered user keeps the password they chose).
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       let user = await tx.user.findUnique({ where: { email: body.email } });
       let createdNewUser = false;
 
@@ -44,11 +45,14 @@ export async function POST(request: NextRequest) {
         createdNewUser = true;
       }
 
+      // After the server-side defaulting above, `employeeId` is guaranteed
+      // to be a string at runtime. The type assertion tells TS to trust that
+      // all required fields are present (Zod validated + runtime defaults).
       const employee = await tx.employee.create({
-        // `body` is the flattened "unchecked" shape — we overlay `userId` to
-        // attach the freshly-minted-or-found user without using a nested
-        // `{ user: { connect: ... } }` operation.
-        data: { ...body, userId: user.id },
+        data: {
+          ...body,
+          userId: user.id,
+        } as Prisma.EmployeeUncheckedCreateInput,
       });
 
       return { employee, user, createdNewUser };
