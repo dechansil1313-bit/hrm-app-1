@@ -1,6 +1,7 @@
 "use client";
-import React, { useState, useMemo } from "react";
-import { Search, Download, Pencil, Trash2, X, Check, AlertTriangle, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react";
+import React, { useState } from "react";
+import Link from "next/link";
+import { Download, Pencil, Trash2, Eye, X, Check, AlertTriangle, RefreshCw } from "lucide-react";
 
 export interface EmployeeSummary {
   id: string;
@@ -18,7 +19,6 @@ interface RecentEmployeesProps {
 }
 
 export function RecentEmployees({ employees, onRefresh }: RecentEmployeesProps) {
-  const [searchQuery, setSearchQuery] = useState("");
 
   // Edit modal state
   const [editEmployee, setEditEmployee] = useState<EmployeeSummary | null>(null);
@@ -39,43 +39,12 @@ export function RecentEmployees({ employees, onRefresh }: RecentEmployeesProps) 
     setTimeout(() => setSuccessMsg(null), 3000);
   };
 
-  // Pagination
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-
-  // Process live search parsing filters safely
-  const filteredEmployees = employees.filter((emp) => {
-    const query = searchQuery.toLowerCase();
-    return (
-      emp.name.toLowerCase().includes(query) ||
-      emp.department.toLowerCase().includes(query) ||
-      emp.employeeId.toLowerCase().includes(query)
-    );
-  });
-
-  const totalPages = Math.max(1, Math.ceil(filteredEmployees.length / pageSize));
-
-  // Clamp current page when total pages decrease (render-time state update is safe)
-  const safePage = Math.min(currentPage, totalPages);
-  if (safePage !== currentPage) {
-    setCurrentPage(safePage);
-  }
-
-  const paginatedEmployees = useMemo(
-    () => filteredEmployees.slice((safePage - 1) * pageSize, safePage * pageSize),
-    [filteredEmployees, safePage, pageSize],
-  );
-
-  const goToPage = (page: number) => {
-    setCurrentPage(Math.max(1, Math.min(page, totalPages)));
-  };
-
   // Client-side CSV generator function
   const exportToCSV = () => {
     if (employees.length === 0) return;
 
     const headers = ["Employee ID", "Full Name", "Department", "Position", "Status", "Join Date"];
-    const csvRows = filteredEmployees.map((emp) => [
+    const csvRows = employees.map((emp) => [
       `"${emp.employeeId}"`,
       `"${emp.name.replace(/"/g, '""')}"`,
       `"${emp.department}"`,
@@ -179,28 +148,14 @@ export function RecentEmployees({ employees, onRefresh }: RecentEmployeesProps) 
           <p className="text-xs text-slate-500">A snapshot listing of the latest talent onboarded into the framework.</p>
         </div>
         
-        {/* Search Bar Input Block */}
-        <div className="relative w-full sm:w-100 flex flex-row">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Search records..."
-            className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-sm bg-slate-50/50 focus:outline-none focus:bg-white focus:border-blue-500 transition-all"
-            value={searchQuery}
-            onChange={(e) => {
-              setSearchQuery(e.target.value);
-              setCurrentPage(1);
-            }}
-          />
-          <button
-            onClick={exportToCSV}
-            disabled={filteredEmployees.length === 0}
-            className="w-full sm:w-72 inline-flex items-center justify-center space-x-2 px-4 py-2 rounded-lg border border-slate-200 bg-white text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 active:scale-95 transition-all disabled:opacity-40 disabled:pointer-events-none"
-          >
-            <Download className="h-4 w-4 text-slate-500" />
-            <span>Export CSV</span>
-          </button>          
-        </div>
+        <button
+          onClick={exportToCSV}
+          disabled={employees.length === 0}
+          className="w-full sm:w-72 inline-flex items-center justify-center space-x-2 px-4 py-2 rounded-lg border border-slate-200 bg-white text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 active:scale-95 transition-all disabled:opacity-40 disabled:pointer-events-none"
+        >
+          <Download className="h-4 w-4 text-slate-500" />
+          <span>Export CSV</span>
+        </button>
       </div>
 
       <div className="overflow-x-auto">
@@ -217,14 +172,14 @@ export function RecentEmployees({ employees, onRefresh }: RecentEmployeesProps) 
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {            paginatedEmployees.length === 0 ? (
+            {            employees.length === 0 ? (
               <tr>
                 <td colSpan={7} className="p-8 text-center text-slate-400">
                   No matching employee records found.
                 </td>
               </tr>
             ) : (
-              paginatedEmployees.map((emp) => (
+              employees.map((emp) => (
                 <tr key={emp.id} className="hover:bg-slate-50/50 transition-colors">
                   <td className="p-4 pl-6 font-mono text-xs text-slate-500">{emp.employeeId}</td>
                   <td className="p-4 font-medium text-slate-900">{emp.name}</td>
@@ -250,6 +205,13 @@ export function RecentEmployees({ employees, onRefresh }: RecentEmployeesProps) 
                   </td>
                   <td className="p-4 pr-6 text-right">
                     <div className="inline-flex items-center space-x-1">
+                      <Link
+                        href={`/dashboard/employees/${emp.id}`}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                        title="View profile"
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Link>
                       <button
                         onClick={() => openEdit(emp)}
                         className="p-1.5 rounded-lg text-slate-400 hover:text-violet-600 hover:bg-violet-50 transition-colors"
@@ -271,106 +233,6 @@ export function RecentEmployees({ employees, onRefresh }: RecentEmployeesProps) 
             )}
           </tbody>
         </table>
-      </div>
-
-      {/* Pagination Controls */}
-      <div className="px-6 py-4 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div className="flex items-center space-x-3">
-          {filteredEmployees.length > 0 && (
-            <p className="text-sm text-slate-500">
-              Showing{" "}
-              <span className="font-medium text-slate-700">
-                {Math.min(filteredEmployees.length, (currentPage - 1) * pageSize + 1)}
-              </span>{" "}
-              to{" "}
-              <span className="font-medium text-slate-700">
-                {Math.min(currentPage * pageSize, filteredEmployees.length)}
-              </span>{" "}
-              of{" "}
-              <span className="font-medium text-slate-700">{filteredEmployees.length}</span>{" "}
-              results
-            </p>
-          )}
-
-          {/* Page size selector */}
-          <div className="flex items-center space-x-2">
-            <span className="text-xs text-slate-400">Show</span>
-            <select
-              value={pageSize}
-              onChange={(e) => {
-                setPageSize(Number(e.target.value));
-                setCurrentPage(1);
-              }}
-              className="px-2 py-1 rounded-md border border-slate-200 text-xs text-slate-600 bg-white focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent cursor-pointer"
-            >
-              <option value={10}>10</option>
-              <option value={25}>25</option>
-              <option value={50}>50</option>
-            </select>
-          </div>
-        </div>
-
-        {totalPages > 1 && (
-          <div className="flex items-center space-x-1">
-            <button
-              onClick={() => goToPage(currentPage - 1)}
-              disabled={currentPage === 1}
-              className="p-2 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-700 active:scale-95 transition-all disabled:opacity-30 disabled:pointer-events-none"
-              title="Previous page"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-
-            {(() => {
-              const pages: (number | "ellipsis")[] = [];
-              const startPage = Math.max(1, currentPage - 1);
-              const endPage = Math.min(totalPages, currentPage + 1);
-
-              if (startPage > 1) {
-                pages.push(1);
-                if (startPage > 2) pages.push("ellipsis");
-              }
-
-              for (let i = startPage; i <= endPage; i++) {
-                pages.push(i);
-              }
-
-              if (endPage < totalPages) {
-                if (endPage < totalPages - 1) pages.push("ellipsis");
-                pages.push(totalPages);
-              }
-
-              return pages;
-            })().map((page, idx) =>
-              page === "ellipsis" ? (
-                <span key={`ellipsis-${idx}`} className="px-2 text-sm text-slate-400">
-                  &hellip;
-                </span>
-              ) : (
-                <button
-                  key={page}
-                  onClick={() => goToPage(page)}
-                  className={`min-w-9 h-9 rounded-lg text-sm font-medium transition-all ${
-                    page === currentPage
-                      ? "bg-violet-600 text-white shadow-sm"
-                      : "text-slate-600 hover:bg-slate-100"
-                  }`}
-                >
-                  {page}
-                </button>
-              )
-            )}
-
-            <button
-              onClick={() => goToPage(currentPage + 1)}
-              disabled={currentPage === totalPages}
-              className="p-2 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-700 active:scale-95 transition-all disabled:opacity-30 disabled:pointer-events-none"
-              title="Next page"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
-          </div>
-        )}
       </div>
 
       {/* Edit Modal */}

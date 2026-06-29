@@ -1,8 +1,9 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useSession } from "next-auth/react";
-import { useState, useCallback, use, useRef, Suspense, startTransition } from "react";
+import { useState, useCallback, use, useEffect, useRef, Suspense, startTransition } from "react";
 import { Redirect } from "@/components/redirect";
 import { PromiseErrorBoundary } from "@/components/promise-error-boundary";
 import {
@@ -12,6 +13,8 @@ import {
   Mail,
   User as UserIcon,
   Building,
+  ChevronLeft,
+  ChevronRight,
   Search,
   Check,
   AlertTriangle,
@@ -21,6 +24,7 @@ import {
   Unlink,
   X,
   UserPlus,
+  Eye,
 } from "lucide-react";
 import { DashboardSkeleton } from "@/components/dashboard/dashboard-skeleton";
 
@@ -105,6 +109,16 @@ function UserList({
   // Rejected promises are caught by the PromiseErrorBoundary below.
   const result = use(resultPromise);
 
+  // Pagination for the admin user list. Default 10/page so users stay scannable
+  // even as the org grows; reset to page 1 whenever the search query changes
+  // so a stale page index doesn't strand the user on an empty slice.
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery]);
+
   if (!result.ok) {
     return (
       <div className="flex items-center space-x-2 p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">
@@ -123,6 +137,20 @@ function UserList({
     );
   });
 
+  const totalPages = Math.max(1, Math.ceil(filteredUsers.length / pageSize));
+
+  // Clamp current page when total pages decrease (render-time state update is safe)
+  const safePage = Math.min(currentPage, totalPages);
+  if (safePage !== currentPage) {
+    setCurrentPage(safePage);
+  }
+
+  const paginatedUsers = filteredUsers.slice((safePage - 1) * pageSize, safePage * pageSize);
+
+  const goToPage = (page: number) => {
+    setCurrentPage(Math.max(1, Math.min(page, totalPages)));
+  };
+
   if (filteredUsers.length === 0) {
     return (
       <div className="text-center py-12 text-slate-400">
@@ -135,137 +163,242 @@ function UserList({
   }
 
   return (
-    <div className="space-y-3">
-      {filteredUsers.map((user) => {
-        const isCurrentUser = user.id === session?.user?.id;
-        const linkedEmployee = user.employees.length > 0 ? user.employees[0] : null;
-        return (
-          <div
-            key={user.id}
-            className="bg-white rounded-xl border border-slate-200 p-5 flex flex-col sm:flex-row sm:items-center gap-4"
-          >
-            {/* Avatar */}
-            <div className="shrink-0">
-              {user.image ? (
-                <Image
-                  src={user.image}
-                  alt={user.name || ""}
-                  className="h-10 w-10 rounded-full object-cover"
-                />
-              ) : (
-                <div className="h-10 w-10 rounded-full bg-violet-50 flex items-center justify-center">
-                  <span className="text-sm font-bold text-violet-600">
-                    {(user.name || "?")[0].toUpperCase()}
+    <>
+      <div className="space-y-3">
+        {paginatedUsers.map((user) => {
+          const isCurrentUser = user.id === session?.user?.id;
+          const linkedEmployee = user.employees.length > 0 ? user.employees[0] : null;
+          return (
+            <div
+              key={user.id}
+              className="bg-white rounded-xl border border-slate-200 p-5 flex flex-col sm:flex-row sm:items-center gap-4"
+            >
+              {/* Avatar */}
+              <div className="shrink-0">
+                {user.image ? (
+                  <Image
+                    src={user.image}
+                    alt={user.name || ""}
+                    className="h-10 w-10 rounded-full object-cover"
+                  />
+                ) : (
+                  <div className="h-10 w-10 rounded-full bg-violet-50 flex items-center justify-center">
+                    <span className="text-sm font-bold text-violet-600">
+                      {(user.name || "?")[0].toUpperCase()}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* User Info */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center space-x-2">
+                  <span className="font-medium truncate">
+                    {user.name || "Unnamed"}
+                  </span>
+                  {isCurrentUser && (
+                    <span className="text-[10px] font-medium uppercase tracking-wide text-violet-600 bg-violet-50 px-1.5 py-0.5 rounded">
+                      You
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center space-x-3 text-sm text-slate-500 mt-0.5">
+                  <span className="flex items-center space-x-1">
+                    <Mail className="h-3 w-3" />
+                    <span>{user.email || "—"}</span>
                   </span>
                 </div>
-              )}
-            </div>
 
-            {/* User Info */}
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center space-x-2">
-                <span className="font-medium truncate">
-                  {user.name || "Unnamed"}
-                </span>
-                {isCurrentUser && (
-                  <span className="text-[10px] font-medium uppercase tracking-wide text-violet-600 bg-violet-50 px-1.5 py-0.5 rounded">
-                    You
+                {/* Employee Linking Status */}
+                <div className="mt-2">
+                  {linkedEmployee ? (
+                    <div className="inline-flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200">
+                      <Link2 className="h-3.5 w-3.5 text-emerald-600" />
+                  <span className="text-xs font-medium text-emerald-700">
+                    <Link
+                      href={`/dashboard/employees/${linkedEmployee.id}`}
+                      className="hover:underline hover:text-emerald-900 transition-colors"
+                    >
+                      {linkedEmployee.name}
+                    </Link>{" · "}{linkedEmployee.position} · {linkedEmployee.department}
                   </span>
-                )}
-              </div>
-              <div className="flex items-center space-x-3 text-sm text-slate-500 mt-0.5">
-                <span className="flex items-center space-x-1">
-                  <Mail className="h-3 w-3" />
-                  <span>{user.email || "—"}</span>
-                </span>
+                      {!isCurrentUser && (
+                        <button
+                          onClick={() => onUnlink(linkedEmployee.id)}
+                          disabled={updatingId === linkedEmployee.id}
+                          className="ml-1 p-0.5 rounded hover:bg-emerald-100 transition-colors"
+                          title="Unlink employee"
+                        >
+                          {updatingId === linkedEmployee.id ? (
+                            <RefreshCw className="h-3 w-3 animate-spin text-emerald-600" />
+                          ) : (
+                            <Unlink className="h-3 w-3 text-emerald-600" />
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => onOpenLinkModal(user.id)}
+                      disabled={isCurrentUser}
+                      className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-dashed border-slate-300 text-slate-500 hover:bg-slate-50 hover:border-slate-400 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                      title={isCurrentUser ? "Cannot link yourself" : "Link to employee record"}
+                    >
+                      <UserPlus className="h-3.5 w-3.5" />
+                      <span>Link Employee Record</span>
+                    </button>
+                  )}
+                </div>
               </div>
 
-              {/* Employee Linking Status */}
-              <div className="mt-2">
-                {linkedEmployee ? (
-                  <div className="inline-flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200">
-                    <Link2 className="h-3.5 w-3.5 text-emerald-600" />
-                    <span className="text-xs font-medium text-emerald-700">
-                      {linkedEmployee.name} · {linkedEmployee.position} · {linkedEmployee.department}
-                    </span>
-                    {!isCurrentUser && (
-                      <button
-                        onClick={() => onUnlink(linkedEmployee.id)}
-                        disabled={updatingId === linkedEmployee.id}
-                        className="ml-1 p-0.5 rounded hover:bg-emerald-100 transition-colors"
-                        title="Unlink employee"
-                      >
-                        {updatingId === linkedEmployee.id ? (
-                          <RefreshCw className="h-3 w-3 animate-spin text-emerald-600" />
-                        ) : (
-                          <Unlink className="h-3 w-3 text-emerald-600" />
-                        )}
-                      </button>
-                    )}
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => onOpenLinkModal(user.id)}
-                    disabled={isCurrentUser}
-                    className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-dashed border-slate-300 text-slate-500 hover:bg-slate-50 hover:border-slate-400 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                    title={isCurrentUser ? "Cannot link yourself" : "Link to employee record"}
-                  >
-                    <UserPlus className="h-3.5 w-3.5" />
-                    <span>Link Employee Record</span>
-                  </button>
-                )}
+              {/* Role Badge + Toggle */}
+              <div className="flex items-center space-x-3 shrink-0">
+                <span
+                  className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium ${
+                    user.role === "ADMIN"
+                      ? "bg-violet-50 text-violet-700"
+                      : "bg-slate-100 text-slate-600"
+                  }`}
+                >
+                  {user.role === "ADMIN" ? (
+                    <ShieldCheck className="h-3.5 w-3.5" />
+                  ) : (
+                    <Shield className="h-3.5 w-3.5" />
+                  )}
+                  <span>
+                    {user.role === "ADMIN" ? "Admin" : "User"}
+                  </span>
+                </span>
+
+                <button
+                  onClick={() => onToggleRole(user.id, user.role)}
+                  disabled={updatingId === user.id || isCurrentUser}
+                  className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-200 text-slate-600 hover:bg-slate-50 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                  title={
+                    isCurrentUser
+                      ? "You cannot change your own role"
+                      : `Change to ${user.role === "ADMIN" ? "USER" : "ADMIN"}`
+                  }
+                >
+                  {updatingId === user.id ? (
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <ArrowLeftRight className="h-3.5 w-3.5" />
+                  )}
+                  <span>
+                    {updatingId === user.id
+                      ? "Updating..."
+                      : isCurrentUser
+                        ? "—"
+                        : user.role === "ADMIN"
+                          ? "Demote"
+                          : "Promote"}
+                  </span>
+                </button>
               </div>
             </div>
+          );
+        })}
+      </div>
 
-            {/* Role Badge + Toggle */}
-            <div className="flex items-center space-x-3 shrink-0">
-              <span
-                className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium ${
-                  user.role === "ADMIN"
-                    ? "bg-violet-50 text-violet-700"
-                    : "bg-slate-100 text-slate-600"
-                }`}
-              >
-                {user.role === "ADMIN" ? (
-                  <ShieldCheck className="h-3.5 w-3.5" />
-                ) : (
-                  <Shield className="h-3.5 w-3.5" />
-                )}
-                <span>
-                  {user.role === "ADMIN" ? "Admin" : "User"}
-                </span>
-              </span>
+      {/* Pagination Controls */}
+      <div className="mt-4 pt-4 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="flex items-center space-x-3">
+          <p className="text-sm text-slate-500">
+            Showing{" "}
+            <span className="font-medium text-slate-700">
+              {Math.min(filteredUsers.length, (safePage - 1) * pageSize + 1)}
+            </span>{" "}
+            to{" "}
+            <span className="font-medium text-slate-700">
+              {Math.min(safePage * pageSize, filteredUsers.length)}
+            </span>{" "}
+            of{" "}
+            <span className="font-medium text-slate-700">{filteredUsers.length}</span>{" "}
+            users
+          </p>
 
-              <button
-                onClick={() => onToggleRole(user.id, user.role)}
-                disabled={updatingId === user.id || isCurrentUser}
-                className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-200 text-slate-600 hover:bg-slate-50 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                title={
-                  isCurrentUser
-                    ? "You cannot change your own role"
-                    : `Change to ${user.role === "ADMIN" ? "USER" : "ADMIN"}`
-                }
-              >
-                {updatingId === user.id ? (
-                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <ArrowLeftRight className="h-3.5 w-3.5" />
-                )}
-                <span>
-                  {updatingId === user.id
-                    ? "Updating..."
-                    : isCurrentUser
-                      ? "—"
-                      : user.role === "ADMIN"
-                        ? "Demote"
-                        : "Promote"}
-                </span>
-              </button>
-            </div>
+          {/* Page size selector */}
+          <div className="flex items-center space-x-2">
+            <span className="text-xs text-slate-400">Show</span>
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setCurrentPage(1);
+              }}
+              className="px-2 py-1 rounded-md border border-slate-200 text-xs text-slate-600 bg-white focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent cursor-pointer"
+            >
+              <option value={10}>10</option>
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+            </select>
           </div>
-        );
-      })}
-    </div>
+        </div>
+
+        {totalPages > 1 && (
+          <div className="flex items-center space-x-1">
+            <button
+              onClick={() => goToPage(safePage - 1)}
+              disabled={safePage === 1}
+              className="p-2 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-700 active:scale-95 transition-all disabled:opacity-30 disabled:pointer-events-none"
+              title="Previous page"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+
+            {(() => {
+              const pages: (number | "ellipsis")[] = [];
+              const startPage = Math.max(1, safePage - 1);
+              const endPage = Math.min(totalPages, safePage + 1);
+
+              if (startPage > 1) {
+                pages.push(1);
+                if (startPage > 2) pages.push("ellipsis");
+              }
+
+              for (let i = startPage; i <= endPage; i++) {
+                pages.push(i);
+              }
+
+              if (endPage < totalPages) {
+                if (endPage < totalPages - 1) pages.push("ellipsis");
+                pages.push(totalPages);
+              }
+
+              return pages;
+            })().map((page, idx) =>
+              page === "ellipsis" ? (
+                <span key={`ellipsis-${idx}`} className="px-2 text-sm text-slate-400">
+                  &hellip;
+                </span>
+              ) : (
+                <button
+                  key={page}
+                  onClick={() => goToPage(page)}
+                  className={`min-w-9 h-9 rounded-lg text-sm font-medium transition-all ${
+                    page === safePage
+                      ? "bg-violet-600 text-white shadow-sm"
+                      : "text-slate-600 hover:bg-slate-100"
+                  }`}
+                >
+                  {page}
+                </button>
+              )
+            )}
+
+            <button
+              onClick={() => goToPage(safePage + 1)}
+              disabled={safePage === totalPages}
+              className="p-2 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-700 active:scale-95 transition-all disabled:opacity-30 disabled:pointer-events-none"
+              title="Next page"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+      </div>
+    </>
   );
 }
 
@@ -303,6 +436,16 @@ export default function AdminPage() {
   const [loadingEmployees, setLoadingEmployees] = useState(false);
   const [linkingEmployeeId, setLinkingEmployeeId] = useState<string | null>(null);
   const [searchEmployee, setSearchEmployee] = useState("");
+
+  // Modal pagination for the "Link Employee Record" picker. Reset to page 1
+  // whenever the search input changes so a stale page index doesn't strand the
+  // user on an empty slice. Default size 5 keeps the modal list visually airy.
+  const [modalCurrentPage, setModalCurrentPage] = useState(1);
+  const [modalPageSize, setModalPageSize] = useState(5);
+
+  useEffect(() => {
+    setModalCurrentPage(1);
+  }, [searchEmployee]);
 
   // Track the in-flight request so rapid refresh clicks cancel the previous fetch
   // instead of stacking concurrent GET requests.
@@ -465,6 +608,23 @@ export default function AdminPage() {
     );
   });
 
+  const modalTotalPages = Math.max(1, Math.ceil(filteredUnlinkedEmployees.length / modalPageSize));
+
+  // Clamp current page when total pages decrease (render-time state update is safe)
+  const modalSafePage = Math.min(modalCurrentPage, modalTotalPages);
+  if (modalSafePage !== modalCurrentPage) {
+    setModalCurrentPage(modalSafePage);
+  }
+
+  const modalPaginatedEmployees = filteredUnlinkedEmployees.slice(
+    (modalSafePage - 1) * modalPageSize,
+    modalSafePage * modalPageSize,
+  );
+
+  const modalGoToPage = (page: number) => {
+    setModalCurrentPage(Math.max(1, Math.min(page, modalTotalPages)));
+  };
+
   if (status === "loading") {
     return <DashboardSkeleton />;
   }
@@ -626,7 +786,7 @@ export default function AdminPage() {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {filteredUnlinkedEmployees.map((employee) => (
+                  {modalPaginatedEmployees.map((employee) => (
                     <div
                       key={employee.id}
                       className="bg-slate-50 rounded-lg p-4 flex items-center justify-between hover:bg-slate-100 transition-colors"
@@ -658,6 +818,105 @@ export default function AdminPage() {
                       </button>
                     </div>
                   ))}
+                </div>
+              )}
+
+              {/* Pagination Controls for the link modal's employee picker */}
+              {!loadingEmployees && filteredUnlinkedEmployees.length > 0 && (
+                <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div className="flex items-center space-x-3">
+                    <p className="text-xs text-slate-500">
+                      Showing{" "}
+                      <span className="font-medium text-slate-700">
+                        {Math.min(filteredUnlinkedEmployees.length, (modalSafePage - 1) * modalPageSize + 1)}
+                      </span>{" "}
+                      to{" "}
+                      <span className="font-medium text-slate-700">
+                        {Math.min(modalSafePage * modalPageSize, filteredUnlinkedEmployees.length)}
+                      </span>{" "}
+                      of{" "}
+                      <span className="font-medium text-slate-700">{filteredUnlinkedEmployees.length}</span>{" "}
+                      employees
+                    </p>
+
+                    <div className="flex items-center space-x-2">
+                      <span className="text-xs text-slate-400">Show</span>
+                      <select
+                        value={modalPageSize}
+                        onChange={(e) => {
+                          setModalPageSize(Number(e.target.value));
+                          setModalCurrentPage(1);
+                        }}
+                        className="px-2 py-1 rounded-md border border-slate-200 text-xs text-slate-600 bg-white focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent cursor-pointer"
+                      >
+                        <option value={5}>5</option>
+                        <option value={10}>10</option>
+                        <option value={25}>25</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {modalTotalPages > 1 && (
+                    <div className="flex items-center space-x-1">
+                      <button
+                        onClick={() => modalGoToPage(modalSafePage - 1)}
+                        disabled={modalSafePage === 1}
+                        className="p-2 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-700 active:scale-95 transition-all disabled:opacity-30 disabled:pointer-events-none"
+                        title="Previous page"
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </button>
+
+                      {(() => {
+                        const pages: (number | "ellipsis")[] = [];
+                        const startPage = Math.max(1, modalSafePage - 1);
+                        const endPage = Math.min(modalTotalPages, modalSafePage + 1);
+
+                        if (startPage > 1) {
+                          pages.push(1);
+                          if (startPage > 2) pages.push("ellipsis");
+                        }
+
+                        for (let i = startPage; i <= endPage; i++) {
+                          pages.push(i);
+                        }
+
+                        if (endPage < modalTotalPages) {
+                          if (endPage < modalTotalPages - 1) pages.push("ellipsis");
+                          pages.push(modalTotalPages);
+                        }
+
+                        return pages;
+                      })().map((page, idx) =>
+                        page === "ellipsis" ? (
+                          <span key={`ellipsis-${idx}`} className="px-2 text-sm text-slate-400">
+                            &hellip;
+                          </span>
+                        ) : (
+                          <button
+                            key={page}
+                            onClick={() => modalGoToPage(page)}
+                            className={`min-w-9 h-9 rounded-lg text-sm font-medium transition-all ${
+                              page === modalSafePage
+                                ? "bg-violet-600 text-white shadow-sm"
+                                : "text-slate-600 hover:bg-slate-100"
+                            }`}
+                          >
+                            {page}
+                          </button>
+                        ),
+                      )}
+
+                      <button
+                        onClick={() => modalGoToPage(modalSafePage + 1)}
+                        disabled={modalSafePage === modalTotalPages}
+                        className="p-2 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-700 active:scale-95 transition-all disabled:opacity-30 disabled:pointer-events-none"
+                        title="Next page"
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

@@ -5,13 +5,14 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { SignOutButton } from "@/components/dashboard/sign-out-button";
 import { EmployeePhotoUpload } from "@/components/dashboard/employee-photo-upload";
-import {  
+import { ChangePasswordButton } from "@/components/dashboard/change-password-button";
+import {
   ArrowLeft,
-  Mail, 
-  Phone, 
-  Building, 
-  Briefcase, 
-  Calendar, 
+  Mail,
+  Phone,
+  Building,
+  Briefcase,
+  Calendar,
   ShieldAlert,
   UserCheck,
 } from "lucide-react";
@@ -146,6 +147,15 @@ export default async function EmployeeProfilePage({ params }: ProfilePageProps) 
               <UserCheck className={`h-4 w-4 ${employee.userId ? "text-emerald-500" : "text-amber-500"}`} />
               <span>{employee.userId ? "Connected to Next-Auth Login Profile" : "No portal profile credentials attached"}</span>
             </div>
+            {/* Only render the change-password affordance when the viewer is
+                looking at their own profile. The check runs server-side so
+                unauthenticated viewers / admins browsing someone else's
+                profile never see the button. */}
+            {employee.userId && employee.userId === session.user.id && (
+              <div className="pt-2">
+                <ChangePasswordButton />
+              </div>
+            )}
           </div>
         </div>
 

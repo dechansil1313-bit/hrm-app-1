@@ -20,6 +20,10 @@ export function QuickAddDialog({ onSuccess }: QuickAddDialogProps) {
     position: "Junior Developer",
     phone: "",
   });
+  const [successInfo, setSuccessInfo] = useState<{
+    name: string;
+    defaultPassword: string | null;
+  } | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,12 +37,25 @@ export function QuickAddDialog({ onSuccess }: QuickAddDialogProps) {
         body: JSON.stringify(formData),
       });
 
+      const data = await response.json().catch(() => ({}));
+
       if (!response.ok) {
-        const data = await response.json();
         throw new Error(data.error || "Failed to create employee record.");
       }
 
-      // Reset Form & Close Modal on success
+      // Surface the freshly-minted default password (if any) so the admin can
+      // communicate the temporary credential to the new employee. Prefer the
+      // server's normalized employee.name over the form input to avoid showing
+      // whitespace / casing that the API may have trimmed.
+      const createdName =
+        data?.employee && typeof data.employee.name === "string"
+          ? data.employee.name
+          : formData.name;
+      const defaultPassword =
+        typeof data.defaultPassword === "string" ? data.defaultPassword : null;
+      setSuccessInfo({ name: createdName, defaultPassword });
+
+      // Reset Form (modal stays open to show the success card).
       setFormData({
         employeeId: "",
         name: "",
@@ -48,13 +65,18 @@ export function QuickAddDialog({ onSuccess }: QuickAddDialogProps) {
         position: "Junior Developer",
         phone: "",
       });
-      setIsOpen(false);
       onSuccess(); // Re-trigger dashboard analytics refresh fetch loop
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "An unexpected error occurred");
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const closeModal = () => {
+    setIsOpen(false);
+    setSuccessInfo(null);
+    setError(null);
   };
 
   return (
@@ -72,19 +94,63 @@ export function QuickAddDialog({ onSuccess }: QuickAddDialogProps) {
       {isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-lg overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
-            
+
             {/* Modal Header */}
             <div className="p-6 border-b border-slate-100 flex items-center justify-between">
               <div>
                 <h2 className="text-xl font-semibold text-slate-900">Add New Employee</h2>
                 <p className="text-xs text-slate-500">Create a clean database profile instance across core teams.</p>
               </div>
-              <button onClick={() => setIsOpen(false)} className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition-colors">
+              <button onClick={closeModal} className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition-colors">
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            {/* Modal Form Content */}
+            {successInfo ? (
+              <div className="p-6 space-y-4">
+                <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-lg text-sm text-emerald-700 space-y-2">
+                  <p className="font-semibold">✅ {successInfo.name} was added successfully.</p>
+                  {successInfo.defaultPassword ? (
+                    <>
+                      <p>
+                        A login account was created with the temporary password:
+                      </p>
+                      <div className="flex items-center justify-between rounded-lg border border-emerald-200 bg-white px-3 py-2 font-mono text-sm">
+                        <span>{successInfo.defaultPassword}</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (typeof navigator !== "undefined" && navigator.clipboard) {
+                              navigator.clipboard.writeText(successInfo.defaultPassword ?? "").catch(() => {});
+                            }
+                          }}
+                          className="text-xs font-medium text-emerald-700 hover:text-emerald-900 hover:underline"
+                        >
+                          Copy
+                        </button>
+                      </div>
+                      <p className="text-xs text-emerald-700/80">
+                        Share this with the employee. They can change it from
+                        their profile page using the &ldquo;Change Password&rdquo; button.
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-xs text-emerald-700/80">
+                      Linked to an existing user account — their original password is unchanged.
+                    </p>
+                  )}
+                </div>
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={closeModal}
+                    className="px-4 py-2 bg-blue-600 rounded-lg text-sm font-medium text-white shadow-sm hover:bg-blue-700 transition-colors"
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
+            ) : (
             <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto max-h-[75vh]">
               {error && (
                 <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-600 font-medium">
@@ -187,7 +253,7 @@ export function QuickAddDialog({ onSuccess }: QuickAddDialogProps) {
               <div className="pt-4 border-t border-slate-100 flex items-center justify-end space-x-3">
                 <button
                   type="button"
-                  onClick={() => setIsOpen(false)}
+                  onClick={closeModal}
                   className="px-4 py-2 border border-slate-200 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors"
                 >
                   Cancel
@@ -201,7 +267,7 @@ export function QuickAddDialog({ onSuccess }: QuickAddDialogProps) {
                 </button>
               </div>
             </form>
-
+            )}
           </div>
         </div>
       )}
