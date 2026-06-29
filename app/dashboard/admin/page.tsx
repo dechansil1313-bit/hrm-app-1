@@ -2,8 +2,9 @@
 
 import Image from "next/image";
 import { useSession } from "next-auth/react";
-import { useState, useCallback, use, useMemo, Suspense, startTransition } from "react";
+import { useState, useCallback, use, useRef, Suspense, startTransition } from "react";
 import { Redirect } from "@/components/redirect";
+import { PromiseErrorBoundary } from "@/components/promise-error-boundary";
 import {
   ArrowLeft,
   ShieldCheck,
@@ -54,12 +55,27 @@ type UsersResult =
   | { ok: true; data: UserRecord[] }
   | { ok: false; error: string };
 
-async function fetchUsersResult(): Promise<UsersResult> {
+async function fetchUsersResult(signal?: AbortSignal): Promise<UsersResult> {
   try {
-    const res = await fetch("/api/users");
+    const res = await fetch("/api/users", { signal });
     if (!res.ok) throw new Error("Failed to load users");
     return { ok: true, data: await res.json() };
   } catch (err: unknown) {
+    // Aborts are expected on Refresh / unmount / Strict Mode double-invoke.
+    // Returning a pending Promise (instead of throwing) keeps `use()` calmly
+    // suspended on the stale fetch while always rendering the latest promise
+    // from state. This avoids an `unhandledrejection` once the PromiseErrorBoundary
+    // is gone (e.g. after the page is unmounted).
+    //
+    // Also routes mid-stream aborts here: some browsers throw `TypeError` (not
+    // `AbortError`) when the body is interrupted by an abort, so we fall back
+    // to a `signal.aborted` check.
+    if (err instanceof Error && err.name === "AbortError") {
+      return new Promise<UsersResult>(() => {});
+    }
+    if (signal?.aborted) {
+      return new Promise<UsersResult>(() => {});
+    }
     return {
       ok: false,
       error: err instanceof Error ? err.message : "Failed to load users",
@@ -84,6 +100,9 @@ function UserList({
   updatingId: string | null;
   searchQuery: string;
 }) {
+  // `use()` must NOT be wrapped in try/catch - React relies on thrown values
+  // (a Promise for Suspense, an Error for the surrounding error boundary).
+  // Rejected promises are caught by the PromiseErrorBoundary below.
   const result = use(resultPromise);
 
   if (!result.ok) {
@@ -272,7 +291,6 @@ function UserListSkeleton() {
 
 export default function AdminPage() {
   const { data: session, status } = useSession();
-  const [refreshKey, setRefreshKey] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
@@ -286,17 +304,42 @@ export default function AdminPage() {
   const [linkingEmployeeId, setLinkingEmployeeId] = useState<string | null>(null);
   const [searchEmployee, setSearchEmployee] = useState("");
 
-  const usersPromise = useMemo(
-    () => fetchUsersResult(),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [refreshKey],
-  );
+  // Track the in-flight request so rapid refresh clicks cancel the previous fetch
+  // instead of stacking concurrent GET requests.
+  const abortControllerRef = useRef<AbortController | null>(null);
+  // Store the active user-list Promise in state so its reference is stable across
+  // Suspense retries (a useMemo here would lose its cached value mid-suspend and
+  // re-run fetchUsersResult, generating new Promises on every retry).
+  const [usersPromise, setUsersPromise] = useState(() => {
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    return fetchUsersResult(controller.signal);
+  });
 
   const handleRefresh = useCallback(() => {
+    // Capture the previous controller BEFORE creating the new one
+    // so the old fetch can be aborted after React has committed the new state.
+    const prevController = abortControllerRef.current;
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     startTransition(() => {
-      setRefreshKey((k) => k + 1);
+      setUsersPromise(fetchUsersResult(controller.signal));
     });
+
+    // Defer aborting the previous request until after React has scheduled the
+    // new state update. The aborted promise is caught inside `fetchUsersResult`
+    // and converted to a pending Promise (`new Promise(() => {})`) so React's
+    // `use()` ignores it once the boundary switches to the next promise. No
+    // AbortError ever escapes into the PromiseErrorBoundary or window.
+    queueMicrotask(() => prevController?.abort());
   }, []);
+
+  // No unmount cleanup: in React 19 + Strict Mode the cleanup runs once
+  // mid-mount, which would abort the controller created in `useState`'s
+  // lazy initializer and surface AbortError through a now-removed boundary
+  // (`unhandledrejection`). On genuine unmount the same problem occurs. The
+  // browser reclaims the abandoned request on navigation.
 
   const toggleRole = async (userId: string, currentRole: string) => {
     setUpdatingId(userId);
@@ -489,17 +532,39 @@ export default function AdminPage() {
         </div>
 
         {/* User List */}
-        <Suspense fallback={<UserListSkeleton />}>
-          <UserList
-            resultPromise={usersPromise}
-            session={session}
-            onToggleRole={toggleRole}
-            onOpenLinkModal={openLinkModal}
-            onUnlink={unlinkEmployee}
-            updatingId={updatingId}
-            searchQuery={searchQuery}
-          />
-        </Suspense>
+        <PromiseErrorBoundary
+          fallback={(error, reset) => (
+            <div className="flex items-center justify-between gap-3 p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">
+              <div className="flex items-center space-x-2 min-w-0">
+                <AlertTriangle className="h-4 w-4 shrink-0" />
+                <span className="truncate">{error.message}</span>
+              </div>
+              <button
+                onClick={() => {
+                  reset();
+                  handleRefresh();
+                }}
+                type="button"
+                className="shrink-0 inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg border border-red-200 bg-white text-xs font-medium text-red-600 hover:bg-red-100 active:scale-95 transition-all"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                <span>Retry</span>
+              </button>
+            </div>
+          )}
+        >
+          <Suspense fallback={<UserListSkeleton />}>
+            <UserList
+              resultPromise={usersPromise}
+              session={session}
+              onToggleRole={toggleRole}
+              onOpenLinkModal={openLinkModal}
+              onUnlink={unlinkEmployee}
+              updatingId={updatingId}
+              searchQuery={searchQuery}
+            />
+          </Suspense>
+        </PromiseErrorBoundary>
       </div>
 
       {/* Link Employee Modal */}
