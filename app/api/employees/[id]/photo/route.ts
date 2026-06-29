@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { photoUploadSchema } from "@/lib/schemas/photo";
+import { parseJsonBody } from "@/lib/validation/parseJsonBody";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -15,39 +17,24 @@ export async function POST(request: Request, context: RouteContext) {
 
   const { id } = await context.params;
 
+  // Verify the employee exists and user has permission
+  const employee = await prisma.employee.findUnique({ where: { id } });
+  if (!employee) {
+    return NextResponse.json({ error: "Employee not found" }, { status: 404 });
+  }
+
+  // Only admins or the employee themselves can update photo
+  const isAdmin = session.user.role === "ADMIN";
+  const isOwnProfile = employee.userId === session.user.id;
+  if (!isAdmin && !isOwnProfile) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const parsed = await parseJsonBody(request, photoUploadSchema);
+  if (!parsed.ok) return parsed.response;
+  const { photo } = parsed.data;
+
   try {
-    // Verify the employee exists and user has permission
-    const employee = await prisma.employee.findUnique({ where: { id } });
-    if (!employee) {
-      return NextResponse.json({ error: "Employee not found" }, { status: 404 });
-    }
-
-    // Only admins or the employee themselves can update photo
-    const isAdmin = session.user.role === "ADMIN";
-    const isOwnProfile = employee.userId === session.user.id;
-    if (!isAdmin && !isOwnProfile) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-
-    const body = await request.json();
-    const { photo } = body;
-
-    if (!photo) {
-      return NextResponse.json({ error: "Photo data is required" }, { status: 400 });
-    }
-
-    // Validate base64 format
-    if (!photo.startsWith("data:image/")) {
-      return NextResponse.json({ error: "Invalid image format" }, { status: 400 });
-    }
-
-    // Check file size (base64 string length approx = original size * 1.37)
-    // Limit to 2MB
-    const sizeInBytes = Math.ceil((photo.length * 3) / 4);
-    if (sizeInBytes > 2 * 1024 * 1024) {
-      return NextResponse.json({ error: "Photo must be less than 2MB" }, { status: 400 });
-    }
-
     const updated = await prisma.employee.update({
       where: { id },
       data: { photo },

@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
+
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { changePasswordSchema } from "@/lib/schemas/auth";
+import { parseJsonBody } from "@/lib/validation/parseJsonBody";
 
 // POST: Change the authenticated user's own password.
 // Requires the current password to make accidental changes harder.
@@ -11,38 +14,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let body: { currentPassword?: unknown; newPassword?: unknown };
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-  }
-
-  const currentPassword =
-    typeof body.currentPassword === "string" ? body.currentPassword : "";
-  const newPassword =
-    typeof body.newPassword === "string" ? body.newPassword : "";
-
-  if (!currentPassword || !newPassword) {
-    return NextResponse.json(
-      { error: "Current password and new password are required" },
-      { status: 400 },
-    );
-  }
-
-  if (newPassword.length < 6) {
-    return NextResponse.json(
-      { error: "New password must be at least 6 characters" },
-      { status: 400 },
-    );
-  }
-
-  if (newPassword === currentPassword) {
-    return NextResponse.json(
-      { error: "New password must differ from the current password" },
-      { status: 400 },
-    );
-  }
+  const parsed = await parseJsonBody(request, changePasswordSchema);
+  if (!parsed.ok) return parsed.response;
+  const { currentPassword, newPassword } = parsed.data;
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },

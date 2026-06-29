@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { linkEmployeeSchema } from "@/lib/schemas/link";
+import { parseJsonBody } from "@/lib/validation/parseJsonBody";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -14,7 +16,9 @@ export async function PATCH(request: Request, context: RouteContext) {
   }
 
   const { id } = await context.params;
-  const { userId } = await request.json();
+  const parsed = await parseJsonBody(request, linkEmployeeSchema);
+  if (!parsed.ok) return parsed.response;
+  const { userId } = parsed.data;
 
   try {
     // Verify the employee exists
@@ -23,7 +27,7 @@ export async function PATCH(request: Request, context: RouteContext) {
       return NextResponse.json({ error: "Employee not found" }, { status: 404 });
     }
 
-    // If userId is provided, link the user; otherwise, unlink
+    // If `userId` is null/undefined → unlink; otherwise → link.
     if (userId) {
       // Verify the user exists
       const user = await prisma.user.findUnique({ where: { id: userId } });
