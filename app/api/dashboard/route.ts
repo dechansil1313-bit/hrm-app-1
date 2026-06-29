@@ -29,10 +29,15 @@ export async function GET() {
       }),
     ]);
 
-    const activeCount = statusCounts.find((s) => s.status === "ACTIVE")?._count.id || 0;
-    const inactiveCount = statusCounts.find((s) => s.status === "INACTIVE")?._count.id || 0;
+    type StatusGroup = (typeof statusCounts)[number];
+    type DeptGroup = (typeof departmentGroupings)[number];
 
-    const formattedDepartments = departmentGroupings.map((dept) => ({
+    const activeCount =
+      statusCounts.find((s: StatusGroup) => s.status === "ACTIVE")?._count.id || 0;
+    const inactiveCount =
+      statusCounts.find((s: StatusGroup) => s.status === "INACTIVE")?._count.id || 0;
+
+    const formattedDepartments = departmentGroupings.map((dept: DeptGroup) => ({
       name: dept.department,
       count: dept._count.id,
     }));
