@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
+import type { EmployeeUncheckedCreateInput } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 
@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
     // `userId: user.id` in one shot — Prisma's create() input is
     // `EmployeeCreateInput XOR EmployeeUncheckedCreateInput`, so you can't
     // mix the two.
-    const body: Prisma.EmployeeUncheckedCreateInput = await request.json();
+    const body: EmployeeUncheckedCreateInput = await request.json();
 
     // Minimal server-side validation. The schema enforces unique emails, but
     // reject obviously bad input early so we can return a friendly error and
