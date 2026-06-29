@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { createEmployeeSchema } from "@/lib/schemas/employee";
 import { parseJsonBody } from "@/lib/validation/parseJsonBody";
@@ -27,7 +28,7 @@ export async function POST(request: NextRequest) {
     // employee pointing at a non-existent user (or vice versa). If a user
     // already exists for this email, we link to them without touching their
     // password (a self-registered user keeps the password they chose).
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       let user = await tx.user.findUnique({ where: { email: body.email } });
       let createdNewUser = false;
 
@@ -49,7 +50,7 @@ export async function POST(request: NextRequest) {
         // attach the freshly-minted-or-found user without using a nested
         // `{ user: { connect: ... } }` operation. The `employeeId!` assertion
         // is safe because the if-block above guarantees it is set.
-        data: { ...body, employeeId: body.employeeId!, userId: user.id },
+        data: { ...body, employeeId: body.employeeId!, userId: user.id, role: body.role ?? "USER" },
       });
 
       return { employee, user, createdNewUser };
