@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
-import { useState, useCallback, use, useEffect, useRef, Suspense, startTransition } from "react";
+import { useState, useCallback, use, useRef, Suspense, startTransition } from "react";
 import { Redirect } from "@/components/redirect";
 import { PromiseErrorBoundary } from "@/components/promise-error-boundary";
 import {
@@ -24,7 +24,6 @@ import {
   Unlink,
   X,
   UserPlus,
-  Eye,
 } from "lucide-react";
 import { DashboardSkeleton } from "@/components/dashboard/dashboard-skeleton";
 
@@ -115,9 +114,13 @@ function UserList({
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
-  useEffect(() => {
+  // Reset to page 1 when the search query changes — safe render-time update
+  // (same pattern as the page-clamp below).
+  const prevSearchQueryRef = useRef(searchQuery);
+  if (searchQuery !== prevSearchQueryRef.current) {
+    prevSearchQueryRef.current = searchQuery;
     setCurrentPage(1);
-  }, [searchQuery]);
+  }
 
   if (!result.ok) {
     return (
@@ -443,9 +446,12 @@ export default function AdminPage() {
   const [modalCurrentPage, setModalCurrentPage] = useState(1);
   const [modalPageSize, setModalPageSize] = useState(5);
 
-  useEffect(() => {
+  // Reset to page 1 when the employee search changes — safe render-time update.
+  const prevSearchEmployeeRef = useRef(searchEmployee);
+  if (searchEmployee !== prevSearchEmployeeRef.current) {
+    prevSearchEmployeeRef.current = searchEmployee;
     setModalCurrentPage(1);
-  }, [searchEmployee]);
+  }
 
   // Track the in-flight request so rapid refresh clicks cancel the previous fetch
   // instead of stacking concurrent GET requests.
@@ -454,9 +460,10 @@ export default function AdminPage() {
   // Suspense retries (a useMemo here would lose its cached value mid-suspend and
   // re-run fetchUsersResult, generating new Promises on every retry).
   const [usersPromise, setUsersPromise] = useState(() => {
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
-    return fetchUsersResult(controller.signal);
+    // The initial controller is intentionally not stored in the ref —
+    // there is nothing to "abort" on first mount, and writing to a ref
+    // during render violates React's rules (eslint react-hooks/refs).
+    return fetchUsersResult(new AbortController().signal);
   });
 
   const handleRefresh = useCallback(() => {
@@ -653,7 +660,7 @@ export default function AdminPage() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Admin Panel</h1>
-            <p className="text-slate-500">Manage user roles, permissions, and employee linkings.</p>
+            <p className="text-slate-500">Manage user roles, permissions, and employee linking.</p>
           </div>
           <button
             onClick={handleRefresh}

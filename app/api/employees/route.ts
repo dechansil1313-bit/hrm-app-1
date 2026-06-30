@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
         // attach the freshly-minted-or-found user without using a nested
         // `{ user: { connect: ... } }` operation. The `employeeId!` assertion
         // is safe because the if-block above guarantees it is set.
-        data: { ...body, employeeId: body.employeeId!, userId: user.id, role: body.role ?? "USER" },
+        data: { ...body, employeeId: body.employeeId!, userId: user.id, role: body.role ?? "EMPLOYEE" },
       });
 
       return { employee, user, createdNewUser };
